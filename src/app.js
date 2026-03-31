@@ -22,7 +22,12 @@ connectDB();
 
 // 2. Middlewares Globales (ORDEN IMPORTANTE)
 app.use(helmet());
-app.use(cors());
+app.use(
+  cors({
+    origin: "https://front-end-production-a2e6.up.railway.app",
+    credentials: true,
+  }),
+);
 app.use(morgan("dev"));
 app.use(express.json()); // <--- DEBE IR ANTES DE LAS RUTAS
 

@@ -21,7 +21,11 @@ const app = express();
 connectDB();
 
 // 2. Middlewares Globales (ORDEN IMPORTANTE)
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+  }),
+);
 app.use(
   cors({
     origin: "https://front-end-production-a2e6.up.railway.app",

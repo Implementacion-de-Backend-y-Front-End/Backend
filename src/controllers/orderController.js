@@ -8,8 +8,8 @@ const { generarLinkWhatsApp } = require("../utils/whatsappHelper");
 const esHorarioOperativo = (fechaEntrega) => {
   const fecha = new Date(fechaEntrega);
   const hora = fecha.getHours();
-  const HORA_APERTURA = 8;
-  const HORA_CIERRE = 18;
+  const HORA_APERTURA = 4;
+  const HORA_CIERRE = 14;
   return hora >= HORA_APERTURA && hora < HORA_CIERRE;
 };
 

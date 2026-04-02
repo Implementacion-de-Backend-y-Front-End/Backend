@@ -2,12 +2,11 @@ const Order = require("../models/Order");
 const Product = require("../models/Products");
 const { generarLinkWhatsApp } = require("../utils/whatsappHelper");
 
-// --- FUNCIÓN CORREGIDA Y SEGURA ---
+// --- FUNCIÓN DE VALIDACIÓN DE HORARIO ---
 const esHorarioOperativo = (fechaEntrega) => {
-  // fechaEntrega viene como "2026-04-01T09:00:00"
   try {
-    const horaTexto = fechaEntrega.split("T")[1]; // Sacamos "09:00:00"
-    const horaMexico = parseInt(horaTexto.split(":")[0]); // Sacamos el 9
+    const horaTexto = fechaEntrega.split("T")[1];
+    const horaMexico = parseInt(horaTexto.split(":")[0]);
 
     const HORA_APERTURA = 7;
     const HORA_CIERRE = 14;
@@ -54,10 +53,10 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    // 3. GENERACIÓN DE FOLIO
+    // 3. GENERACIÓN DE FOLIO ÚNICO
     const nuevoFolio = "#" + Math.floor(1000 + Math.random() * 9000);
 
-    // 4. CREACIÓN DEL PEDIDO
+    // 4. CREACIÓN DEL PEDIDO (Estado inicial: recibido)
     const nuevoPedido = new Order({
       folio: nuevoFolio,
       clienteId: clienteIdReal,
@@ -79,18 +78,11 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // 6. GENERAR LINK DE WHATSAPP
-    const whatsappLink = generarLinkWhatsApp(
-      telefono,
-      nombre,
-      nuevoFolio,
-      "confirmado",
-    );
-
+    // 6. RESPUESTA EXITOSA
+    // Nota: Ya no generamos ni enviamos el link de WhatsApp aquí.
     res.status(201).json({
-      message: `¡Recibimos tu pedido ${nuevoFolio}! En breve confirmamos.`,
+      message: `¡Recibimos tu pedido ${nuevoFolio}! Lo revisaremos en breve.`,
       pedido: nuevoPedido,
-      whatsappLink: whatsappLink,
     });
   } catch (error) {
     console.error("Error en createOrder:", error);

@@ -20,7 +20,6 @@ const app = express();
 // 1. Conectar a la Base de Datos
 connectDB();
 
-// 2. Middlewares Globales (ORDEN IMPORTANTE)
 app.use(
   helmet({
     crossOriginResourcePolicy: false,
@@ -47,7 +46,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/uploads", express.static("uploads"));
 
 app.get("/", (req, res) => {
-  res.json({ message: "🪵🔥 API de Leños Rellenos funcionando" });
+  res.json({ message: "API de Leños Rellenos funcionando" });
 });
 
 // 4. Manejo de 404

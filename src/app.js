@@ -41,7 +41,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/delivery", deliveryRoutes);
 app.use("/api/products", productRoutes);
-app.use("/api/users", userRoutes);
+app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/orders", orderRoutes);
 app.use("/uploads", express.static("uploads"));
 

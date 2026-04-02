@@ -2,6 +2,7 @@ const Order = require("../models/Order");
 const Product = require("../models/Products");
 const { generarLinkWhatsApp } = require("../utils/whatsappHelper");
 
+// Función de ayuda para validar el horario
 const esHorarioOperativo = (fechaEntrega) => {
   const fecha = new Date(fechaEntrega);
 
@@ -19,13 +20,6 @@ const esHorarioOperativo = (fechaEntrega) => {
   return horaMexico >= HORA_APERTURA && horaMexico < HORA_CIERRE;
 };
 
-if (!esHorarioOperativo(fechaEntrega)) {
-  return res.status(400).json({
-    message:
-      "🕒 Horario no disponible. Entregamos leños de 7:00 AM a 2:00 PM (Hora CDMX).",
-  });
-}
-
 exports.createOrder = async (req, res) => {
   try {
     const {
@@ -39,16 +33,14 @@ exports.createOrder = async (req, res) => {
       nota,
     } = req.body;
 
-    // --- CAMBIO CLAVE AQUÍ ---
-    // Ya no tomamos clienteId del body. Lo tomamos del TOKEN (req.user.id)
-    // Esto asegura que el ID siempre sea el del usuario que inició sesión.
+    // Tomamos el ID del token (inyectado por el middleware verificarToken)
     const clienteIdReal = req.user.id;
 
-    // 1. VALIDACIÓN DE HORARIO DE ENTREGA
+    // 1. VALIDACIÓN DE HORARIO (DENTRO DE LA FUNCIÓN)
     if (!esHorarioOperativo(fechaEntrega)) {
       return res.status(400).json({
         message:
-          "🕒 Horario no disponible. Entregamos leños de 8:00 AM a 6:00 PM.",
+          "🕒 Horario no disponible. Entregamos leños de 7:00 AM a 2:00 PM (Hora CDMX).",
       });
     }
 
@@ -74,7 +66,7 @@ exports.createOrder = async (req, res) => {
       total,
       fechaEntrega,
       tipoEntrega,
-      direccion, // <--- Esto guarda el objeto {calle, colonia, referencia} en la base de datos
+      direccion,
       nota,
       estado: "recibido",
     });
@@ -111,12 +103,8 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-/**
- * Historial de pedidos del cliente (Usa el ID del token para más seguridad)
- */
 exports.getCustomerOrders = async (req, res) => {
   try {
-    // También aquí usamos req.user.id para que un cliente solo vea SUS pedidos
     const pedidos = await Order.find({ clienteId: req.user.id }).sort({
       fechaPedido: -1,
     });

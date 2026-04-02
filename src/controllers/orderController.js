@@ -103,3 +103,18 @@ exports.getCustomerOrders = async (req, res) => {
     res.status(500).json({ message: "Error al obtener historial" });
   }
 };
+
+exports.getPendingOrders = async (req, res) => {
+  try {
+    // Buscamos pedidos con estado 'recibido'
+    // .populate trae los datos del usuario (nombre, email, etc.)
+    const pedidos = await Order.find({ estado: "recibido" })
+      .populate("clienteId", "nombre telefono direcciones")
+      .sort({ fechaPedido: -1 });
+
+    res.json(pedidos);
+  } catch (error) {
+    console.error("Error al obtener pedidos pendientes:", error);
+    res.status(500).json({ message: "Error al obtener pedidos" });
+  }
+};

@@ -1,61 +1,149 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const morgan = require("morgan");
-const connectDB = require("./config/db");
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  Link,
+} from "react-router-dom";
+import { useContext } from "react";
+import { AuthContext } from "./context/AuthContext";
+import AuthProvider from "./context/AuthContext";
+import Navbar from "./components/Navbar";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Profile from "./pages/Profile";
+import ForgotPassword from "./pages/ForgotPassword";
+// Importamos los nuevos componentes
+import Menu from "./components/Menu";
+import MisPedidos from "./components/MisPedidos";
+import Checkout from "./components/Checkout";
+import AdminDashboard from "./pages/AdminDashboard";
 
-// Importar Rutas
-const productRoutes = require("./routes/productRoutes");
-const orderRoutes = require("./routes/orderRoutes");
-const userRoutes = require("./routes/userRoutes");
-const assignmentRoutes = require("./routes/assignmentRoutes");
-const inventoryRoutes = require("./routes/inventoryRoutes");
-const adminRoutes = require("./routes/adminRoutes");
-const reportRoutes = require("./routes/reportRoutes");
-const deliveryRoutes = require("./routes/deliveryRoutes");
+// --- COMPONENTE PARA EL MENÚ INFERIOR ---
+const BarraNavegacionInferior = () => {
+  const { user } = useContext(AuthContext);
 
-const app = express();
+  // Solo se muestra si el usuario está logueado y es un CLIENTE
+  if (!user || user.rol === "admin") return null;
 
-// 1. Conectar a la Base de Datos
-connectDB();
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-3 shadow-[0_-5px_15px_rgba(0,0,0,0.1)] z-50">
+      <Link
+        to="/"
+        className="flex flex-col items-center text-gray-500 hover:text-orange-600 transition-colors"
+      >
+        <span className="text-2xl">🏠</span>
+        <span className="text-[10px] font-black uppercase italic">Menú</span>
+      </Link>
 
-// 2. Middlewares Globales (ORDEN IMPORTANTE)
-app.use(
-  helmet({
-    crossOriginResourcePolicy: false,
-  }),
-);
-app.use(
-  cors({
-    origin: "https://front-end-production-a2e6.up.railway.app",
-    credentials: true,
-  }),
-);
-app.use(morgan("dev"));
-app.use(express.json()); // <--- DEBE IR ANTES DE LAS RUTAS
+      <Link
+        to="/checkout"
+        className="flex flex-col items-center text-orange-600"
+      >
+        <span className="text-2xl">🛒</span>
+        <span className="text-[10px] font-black uppercase italic">Carrito</span>
+      </Link>
 
-// 3. Definición de Rutas
-app.use("/api/assignments", assignmentRoutes);
-app.use("/api/inventory", inventoryRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/reports", reportRoutes);
-app.use("/api/delivery", deliveryRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/orders", orderRoutes);
-app.use("/uploads", express.static("uploads"));
+      <Link
+        to="/mis-pedidos"
+        className="flex flex-col items-center text-gray-500 hover:text-orange-600 transition-colors"
+      >
+        <span className="text-2xl">📋</span>
+        <span className="text-[10px] font-black uppercase italic">Pedidos</span>
+      </Link>
+    </nav>
+  );
+};
 
-app.get("/", (req, res) => {
-  res.json({ message: "🪵🔥 API de Leños Rellenos funcionando" });
-});
+// --- PROTECCIÓN DE RUTAS ---
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useContext(AuthContext);
+  if (loading)
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-white">
+        Cargando...
+      </div>
+    );
+  if (!user || user.rol !== "admin") return <Navigate to="/" />;
+  return children;
+};
 
-// 4. Manejo de 404
-app.use((req, res) => {
-  res.status(404).json({ message: "Lo siento, esa ruta no existe." });
-});
+const ClienteRoute = ({ children }) => {
+  const { user, loading } = useContext(AuthContext);
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        Cargando...
+      </div>
+    );
+  if (!user) return <Navigate to="/login" />; // Si no hay usuario, al login
+  if (user.rol === "admin") return <Navigate to="/admin" />; // Si es admin, al dashboard
+  return children;
+};
 
-const PORT = process.env.PORT || 4000; // Railway usará process.env.PORT
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Servidor corriendo en puerto ${PORT}`);
-});
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <Navbar />
+
+        <div className="pb-20">
+          {" "}
+          {/* Espacio para que el menú inferior no tape el contenido */}
+          <Routes>
+            {/* 🏠 AHORA LA RAÍZ MUESTRA EL MENÚ DIRECTAMENTE */}
+            <Route path="/" element={<Menu />} />
+
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+
+            {/* 🛒 RUTA DEL CARRITO */}
+            <Route
+              path="/checkout"
+              element={
+                <ClienteRoute>
+                  <Checkout />
+                </ClienteRoute>
+              }
+            />
+
+            {/* 📋 RUTA DE MIS PEDIDOS */}
+            <Route
+              path="/mis-pedidos"
+              element={
+                <ClienteRoute>
+                  <MisPedidos />
+                </ClienteRoute>
+              }
+            />
+
+            {/* 👤 PERFIL (Solo clientes) */}
+            <Route
+              path="/perfil"
+              element={
+                <ClienteRoute>
+                  <Profile />
+                </ClienteRoute>
+              }
+            />
+
+            {/* ⚙️ PANEL DE ADMINISTRADOR */}
+            <Route
+              path="/admin"
+              element={
+                <AdminRoute>
+                  <AdminDashboard />
+                </AdminRoute>
+              }
+            />
+          </Routes>
+        </div>
+
+        <BarraNavegacionInferior />
+      </Router>
+    </AuthProvider>
+  );
+}
+
+export default App;

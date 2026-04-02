@@ -2,16 +2,29 @@ const Order = require("../models/Order");
 const Product = require("../models/Products");
 const { generarLinkWhatsApp } = require("../utils/whatsappHelper");
 
-/**
- * Validación de Horario Operativo (8 AM a 6 PM)
- */
 const esHorarioOperativo = (fechaEntrega) => {
   const fecha = new Date(fechaEntrega);
-  const hora = fecha.getHours();
-  const HORA_APERTURA = 4;
+
+  const horaMexico = parseInt(
+    fecha.toLocaleString("en-US", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: "America/Mexico_City",
+    }),
+  );
+
+  const HORA_APERTURA = 7;
   const HORA_CIERRE = 14;
-  return hora >= HORA_APERTURA && hora < HORA_CIERRE;
+
+  return horaMexico >= HORA_APERTURA && horaMexico < HORA_CIERRE;
 };
+
+if (!esHorarioOperativo(fechaEntrega)) {
+  return res.status(400).json({
+    message:
+      "🕒 Horario no disponible. Entregamos leños de 7:00 AM a 2:00 PM (Hora CDMX).",
+  });
+}
 
 exports.createOrder = async (req, res) => {
   try {

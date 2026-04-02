@@ -2,22 +2,23 @@ const Order = require("../models/Order");
 const Product = require("../models/Products");
 const { generarLinkWhatsApp } = require("../utils/whatsappHelper");
 
-// Función de ayuda para validar el horario
+// --- FUNCIÓN CORREGIDA Y SEGURA ---
 const esHorarioOperativo = (fechaEntrega) => {
-  const fecha = new Date(fechaEntrega);
+  // fechaEntrega viene como "2026-04-01T09:00:00"
+  try {
+    const horaTexto = fechaEntrega.split("T")[1]; // Sacamos "09:00:00"
+    const horaMexico = parseInt(horaTexto.split(":")[0]); // Sacamos el 9
 
-  const horaMexico = parseInt(
-    fecha.toLocaleString("en-US", {
-      hour: "numeric",
-      hour12: false,
-      timeZone: "America/Mexico_City",
-    }),
-  );
+    const HORA_APERTURA = 7;
+    const HORA_CIERRE = 14;
 
-  const HORA_APERTURA = 7;
-  const HORA_CIERRE = 14;
+    console.log("Validando hora local recibida:", horaMexico);
 
-  return horaMexico >= HORA_APERTURA && horaMexico < HORA_CIERRE;
+    return horaMexico >= HORA_APERTURA && horaMexico < HORA_CIERRE;
+  } catch (e) {
+    console.error("Error al parsear fecha:", e);
+    return false;
+  }
 };
 
 exports.createOrder = async (req, res) => {
@@ -33,21 +34,19 @@ exports.createOrder = async (req, res) => {
       nota,
     } = req.body;
 
-    // Tomamos el ID del token (inyectado por el middleware verificarToken)
     const clienteIdReal = req.user.id;
 
-    // 1. VALIDACIÓN DE HORARIO (DENTRO DE LA FUNCIÓN)
+    // 1. VALIDACIÓN DE HORARIO
     if (!esHorarioOperativo(fechaEntrega)) {
       return res.status(400).json({
         message:
-          "🕒 Horario no disponible. Entregamos leños de 7:00 AM a 2:00 PM (Hora CDMX).",
+          "🕒 Horario no disponible. Entregamos leños de 7:00 AM a 2:00 PM.",
       });
     }
 
     // 2. VERIFICACIÓN DE STOCK
     for (const item of productos) {
       const productoBD = await Product.findById(item.productoId);
-
       if (!productoBD || productoBD.stock < item.cantidad) {
         return res.status(400).json({
           message: `🚫 ¡Ups! No hay suficiente stock de '${item.nombre}'. Disponibles: ${productoBD ? productoBD.stock : 0}.`,
@@ -55,7 +54,7 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    // 3. GENERACIÓN DE FOLIO ÚNICO
+    // 3. GENERACIÓN DE FOLIO
     const nuevoFolio = "#" + Math.floor(1000 + Math.random() * 9000);
 
     // 4. CREACIÓN DEL PEDIDO
@@ -88,7 +87,6 @@ exports.createOrder = async (req, res) => {
       "confirmado",
     );
 
-    // 7. RESPUESTA EXITOSA
     res.status(201).json({
       message: `¡Recibimos tu pedido ${nuevoFolio}! En breve confirmamos.`,
       pedido: nuevoPedido,

@@ -18,10 +18,16 @@ exports.getDailyReport = async (req, res) => {
 
     const totalVentas = ventasHoy.reduce((sum, order) => sum + order.total, 0);
 
-    // 2. Pedidos completados (entregados hoy)
+    // 2. Pedidos completados (entregados hoy - por fechaEntrega O updatedAt)
     const pedidosCompletados = await Order.countDocuments({
-      fechaPedido: { $gte: today, $lt: tomorrow },
       estado: "entregado",
+      $or: [
+        { fechaEntrega: { $gte: today, $lt: tomorrow } },
+        {
+          fechaEntrega: { $exists: false },
+          updatedAt: { $gte: today, $lt: tomorrow },
+        },
+      ],
     });
 
     // 3. Pedidos pendientes (recibidos o confirmados)

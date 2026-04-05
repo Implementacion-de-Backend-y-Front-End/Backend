@@ -65,7 +65,7 @@ router.put(
   },
 );
 
-// 3. Confirmar entrega
+// 3. Confirmar entrega - AHORA ENVÍA WhatsApp AL ADMIN
 router.put(
   "/entregar/:id",
   verificarToken,
@@ -73,10 +73,9 @@ router.put(
   async (req, res) => {
     try {
       const { id } = req.params;
-      const pedido = await Order.findById(id).populate(
-        "clienteId",
-        "nombre telefono",
-      );
+      const pedido = await Order.findById(id)
+        .populate("clienteId", "nombre telefono")
+        .populate("repartidorId", "nombre");
 
       if (!pedido) {
         return res.status(404).json({ message: "Pedido no encontrado" });
@@ -86,22 +85,39 @@ router.put(
       pedido.fechaEntrega = new Date();
       await pedido.save();
 
+      // WhatsApp al cliente
       const telCliente = pedido.clienteId.telefono.replace(/\D/g, "");
-      const mensaje = `✅ ¡Hola ${pedido.clienteId.nombre}! Tu pedido ${pedido.folio} fue entregado. ¡Gracias! 🪵🔥`;
-      const whatsappCliente = `https://wa.me/${telCliente}?text=${encodeURIComponent(mensaje)}`;
+      const mensajeCliente = `✅ ¡Hola ${pedido.clienteId.nombre}! Tu pedido ${pedido.folio} fue entregado. ¡Gracias! 🪵🔥`;
+      const whatsappCliente = `https://wa.me/${telCliente}?text=${encodeURIComponent(mensajeCliente)}`;
+
+      // Buscar admins para notificar
+      const admins = await User.find({ rol: "admin", activo: true });
+      const repartidorNombre = pedido.repartidorId?.nombre || "Repartidor";
+
+      // Crear URLs de WhatsApp para cada admin
+      const whatsappAdmins = admins.map((admin) => {
+        const telAdmin = admin.telefono.replace(/\D/g, "");
+        const mensajeAdmin = `📦 ¡Pedido Entregado!\n\n🧾 Folio: ${pedido.folio}\n👤 Cliente: ${pedido.clienteId.nombre}\n🚴 Repartidor: ${repartidorNombre}\n💰 Total: $${pedido.total}\n⏰ Hora: ${new Date().toLocaleTimeString("es-MX")}`;
+        return {
+          nombre: admin.nombre,
+          url: `https://wa.me/${telAdmin}?text=${encodeURIComponent(mensajeAdmin)}`,
+        };
+      });
 
       res.json({
         message: `¡Pedido ${pedido.folio} entregado!`,
         pedido,
         whatsappCliente,
+        whatsappAdmins, // Array con URLs de WhatsApp para cada admin
       });
     } catch (error) {
+      console.error("Error al confirmar entrega:", error);
       res.status(500).json({ message: "Error al confirmar entrega" });
     }
   },
 );
 
-// 4. Historial del día
+// 4. Historial del día - CORREGIDO para mostrar todos los entregados del repartidor
 router.get(
   "/historial",
   verificarToken,
@@ -113,11 +129,20 @@ router.get(
       const manana = new Date(hoy);
       manana.setDate(manana.getDate() + 1);
 
+      // Buscar por fechaEntrega O por updatedAt si no existe fechaEntrega
       const entregados = await Order.find({
         repartidorId: req.user.id,
         estado: "entregado",
-        fechaEntrega: { $gte: hoy, $lt: manana },
-      }).populate("clienteId", "nombre");
+        $or: [
+          { fechaEntrega: { $gte: hoy, $lt: manana } },
+          {
+            fechaEntrega: { $exists: false },
+            updatedAt: { $gte: hoy, $lt: manana },
+          },
+        ],
+      })
+        .populate("clienteId", "nombre")
+        .sort({ fechaEntrega: -1, updatedAt: -1 });
 
       res.json(entregados);
     } catch (error) {
@@ -144,6 +169,7 @@ router.put("/complete/:id", verificarToken, async (req, res) => {
     const pedido = await Order.findById(req.params.id);
     if (!pedido) return res.status(404).json({ message: "No encontrado" });
     pedido.estado = "entregado";
+    pedido.fechaEntrega = new Date();
     await pedido.save();
     res.json({ message: "Entregado", pedido });
   } catch (error) {

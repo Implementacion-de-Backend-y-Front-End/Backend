@@ -6,10 +6,7 @@ const nodemailer = require("nodemailer");
 const User = require("../models/Users");
 const bcrypt = require("bcryptjs");
 
-// ========================================
-// 🔐 ALMACENAMIENTO TEMPORAL DE CÓDIGOS
-// ========================================
-// En producción usar Redis o similar
+// Almacenamiento temporal de códigos
 const codigosRecuperacion = new Map();
 
 // ========================================
@@ -19,6 +16,19 @@ const codigosRecuperacion = new Map();
 router.post("/login", userController.login);
 router.post("/register", userController.register);
 
+// Obtener solo repartidores (para el selector de asignación)
+router.get("/repartidores", verificarToken, async (req, res) => {
+  try {
+    const repartidores = await User.find({
+      rol: "repartidor",
+      activo: true,
+    }).select("-password");
+    res.json(repartidores);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener repartidores" });
+  }
+});
+
 /**
  * 1. ENVIAR CÓDIGO POR CORREO
  */
@@ -26,7 +36,6 @@ router.post("/olvide-password", async (req, res) => {
   const { correo } = req.body;
 
   try {
-    // Verificar que el usuario existe
     const usuario = await User.findOne({ correo });
     if (!usuario) {
       return res.status(404).json({
@@ -35,10 +44,8 @@ router.post("/olvide-password", async (req, res) => {
       });
     }
 
-    // Generar código de 6 dígitos
     const codigo = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Guardar código con expiración de 10 minutos
     codigosRecuperacion.set(correo, {
       codigo,
       expira: Date.now() + 10 * 60 * 1000,
@@ -65,7 +72,6 @@ router.post("/olvide-password", async (req, res) => {
           <p>Tu código de seguridad para restablecer tu contraseña en <b>Leños Rellenos</b> es:</p>
           <h1 style="color: #f97316; letter-spacing: 8px; font-size: 40px;">${codigo}</h1>
           <p style="color: #666;">Este código expira en 10 minutos.</p>
-          <p style="color: #999; font-size: 12px;">Si no solicitaste este código, ignora este mensaje.</p>
         </div>
       `,
     });
@@ -78,7 +84,7 @@ router.post("/olvide-password", async (req, res) => {
     console.error("Error Nodemailer:", error);
     res.status(500).json({
       success: false,
-      message: "Error al enviar el correo. Revisa tus credenciales en .env",
+      message: "Error al enviar el correo",
     });
   }
 });
@@ -92,16 +98,13 @@ router.post("/verificar-codigo", async (req, res) => {
   try {
     const registro = codigosRecuperacion.get(correo);
 
-    // Verificar si existe un código para este correo
     if (!registro) {
       return res.status(400).json({
         success: false,
-        message:
-          "No hay código pendiente para este correo. Solicita uno nuevo.",
+        message: "No hay código pendiente. Solicita uno nuevo.",
       });
     }
 
-    // Verificar si el código expiró
     if (Date.now() > registro.expira) {
       codigosRecuperacion.delete(correo);
       return res.status(400).json({
@@ -110,7 +113,6 @@ router.post("/verificar-codigo", async (req, res) => {
       });
     }
 
-    // Verificar si el código coincide
     if (registro.codigo !== codigo) {
       return res.status(400).json({
         success: false,
@@ -118,7 +120,6 @@ router.post("/verificar-codigo", async (req, res) => {
       });
     }
 
-    // Código válido - marcar como verificado
     codigosRecuperacion.set(correo, {
       ...registro,
       verificado: true,
@@ -129,7 +130,6 @@ router.post("/verificar-codigo", async (req, res) => {
       message: "Código verificado correctamente",
     });
   } catch (error) {
-    console.error("Error al verificar código:", error);
     res.status(500).json({
       success: false,
       message: "Error al verificar el código",
@@ -138,13 +138,12 @@ router.post("/verificar-codigo", async (req, res) => {
 });
 
 /**
- * 3. ACTUALIZAR CONTRASEÑA EN LA BASE DE DATOS
+ * 3. ACTUALIZAR CONTRASEÑA
  */
 router.post("/reset-password", async (req, res) => {
   const { correo, nuevaPassword } = req.body;
 
   try {
-    // Verificar que el código fue validado previamente
     const registro = codigosRecuperacion.get(correo);
 
     if (!registro || !registro.verificado) {
@@ -154,7 +153,6 @@ router.post("/reset-password", async (req, res) => {
       });
     }
 
-    // Buscar al usuario
     const usuario = await User.findOne({ correo });
 
     if (!usuario) {
@@ -164,14 +162,12 @@ router.post("/reset-password", async (req, res) => {
       });
     }
 
-    // Encriptar la nueva contraseña
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(nuevaPassword, salt);
 
     usuario.password = hashedPassword;
     await usuario.save();
 
-    // Limpiar el código usado
     codigosRecuperacion.delete(correo);
 
     res.json({
@@ -179,7 +175,6 @@ router.post("/reset-password", async (req, res) => {
       message: "Contraseña actualizada con éxito",
     });
   } catch (error) {
-    console.error("Error al resetear password:", error);
     res.status(500).json({
       success: false,
       message: "No se pudo actualizar la contraseña",
@@ -191,10 +186,6 @@ router.post("/reset-password", async (req, res) => {
 // 🔒 RUTAS PROTEGIDAS (SOLO ADMIN)
 // ========================================
 
-/**
- * Registrar personal (admin o repartidor)
- * Solo un administrador puede crear otros admins o repartidores
- */
 router.post(
   "/registrar-staff",
   verificarToken,
@@ -203,14 +194,12 @@ router.post(
     try {
       let { nombre, telefono, password, rol, correo } = req.body;
 
-      // Validar que el rol sea válido para personal
       if (!["admin", "repartidor"].includes(rol)) {
         return res.status(400).json({
           message: "Rol inválido. Solo se permite: admin o repartidor",
         });
       }
 
-      // Normalizar teléfono
       const normalizarTelefono = (tel) => {
         if (!tel) return tel;
         let limpio = tel.replace(/\D/g, "");
@@ -222,7 +211,6 @@ router.post(
 
       const telefonoFormateado = normalizarTelefono(telefono);
 
-      // Verificar si ya existe
       const existe = await User.findOne({ telefono: telefonoFormateado });
       if (existe) {
         return res.status(400).json({
@@ -230,11 +218,9 @@ router.post(
         });
       }
 
-      // Encriptar contraseña
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
 
-      // Crear usuario
       const nuevoUsuario = new User({
         nombre,
         telefono: telefonoFormateado,
@@ -256,7 +242,6 @@ router.post(
         },
       });
     } catch (error) {
-      console.error("Error al crear staff:", error);
       res.status(500).json({
         message: "Error al crear usuario",
         error: error.message,
@@ -265,9 +250,6 @@ router.post(
   },
 );
 
-/**
- * Obtener lista de personal (admins y repartidores)
- */
 router.get(
   "/personal",
   verificarToken,
@@ -275,9 +257,6 @@ router.get(
   userController.getPersonal,
 );
 
-/**
- * Eliminar usuario
- */
 router.delete(
   "/:id",
   verificarToken,

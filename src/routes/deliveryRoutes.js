@@ -1,18 +1,57 @@
 const express = require("express");
 const router = express.Router();
 const deliveryController = require("../controllers/deliveryController");
-const auth = require("../middlewares/auth");
+const { verificarToken } = require("../middlewares/auth");
 
-// 1. Ver mis tareas (El ID se saca del token automáticamente)
-// URL en Postman: GET /api/delivery/my-tasks
-router.get("/my-tasks", auth.verificarToken, deliveryController.getMyOrders);
+// Middleware para verificar que es repartidor
+const verificarRepartidor = (req, res, next) => {
+  if (req.user && (req.user.rol === "repartidor" || req.user.rol === "admin")) {
+    next();
+  } else {
+    res.status(403).json({
+      message: "Acceso denegado. Esta acción requiere rol de Repartidor.",
+    });
+  }
+};
 
-// 2. Marcar como entregado (Pasamos el ID del pedido en la URL)
-// URL en Postman: PUT /api/delivery/complete/ID_DEL_PEDIDO
+// 1. Obtener mis rutas del día (máximo 5)
+router.get(
+  "/mis-rutas",
+  verificarToken,
+  verificarRepartidor,
+  deliveryController.getMyRoutes,
+);
+
+// 2. Marcar pedido como "en camino" (notifica al cliente)
 router.put(
-  "/complete/:id",
-  auth.verificarToken,
+  "/en-camino/:id",
+  verificarToken,
+  verificarRepartidor,
+  deliveryController.startDelivery,
+);
+
+// 3. Confirmar entrega (notifica a cliente y admin)
+router.put(
+  "/entregar/:id",
+  verificarToken,
+  verificarRepartidor,
   deliveryController.confirmDelivery,
+);
+
+// 4. Ver detalle de un pedido
+router.get(
+  "/pedido/:id",
+  verificarToken,
+  verificarRepartidor,
+  deliveryController.getOrderDetail,
+);
+
+// 5. Historial de entregas del día
+router.get(
+  "/historial",
+  verificarToken,
+  verificarRepartidor,
+  deliveryController.getMyDeliveredToday,
 );
 
 module.exports = router;

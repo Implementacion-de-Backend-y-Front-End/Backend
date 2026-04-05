@@ -1,101 +1,147 @@
 const Order = require("../models/Order");
 const User = require("../models/Users");
 
-// 1. ASIGNAR PEDIDO (Doña María / Admin)
-exports.assignOrder = async (req, res) => {
+// 1. OBTENER MIS RUTAS DEL DÍA (máximo 5 pedidos)
+exports.getMyRoutes = async (req, res) => {
   try {
-    const { pedidoId, repartidorId } = req.body;
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
 
-    if (!pedidoId || !repartidorId) {
-      return res
-        .status(400)
-        .json({ message: "Debes enviar pedidoId y repartidorId" });
-    }
+    const misPedidos = await Order.find({
+      repartidorId: req.user.id,
+      estado: { $in: ["enCamino", "confirmado"] },
+    })
+      .populate("clienteId", "nombre telefono")
+      .sort({ fechaPedido: 1 })
+      .limit(5);
 
-    // Buscamos el pedido. IMPORTANTE: Usamos 'clienteId' que es como está en tu modelo
-    const pedido = await Order.findById(pedidoId).populate({
-      path: "clienteId",
-      model: "User", // Forzamos a Mongoose a buscar en el modelo 'User'
-    });
+    res.json(misPedidos);
+  } catch (error) {
+    console.error("Error al obtener rutas:", error);
+    res.status(500).json({ message: "Error al obtener tus rutas" });
+  }
+};
 
-    // LOG DE DEPURACIÓN: Revisa tu terminal de VS Code al ejecutar esto
-    console.log("Pedido encontrado:", pedido ? "SÍ" : "NO");
-    if (pedido) console.log("Cliente poblado:", pedido.clienteId ? "SÍ" : "NO");
+// 2. MARCAR "EN CAMINO" - Notifica al cliente por WhatsApp
+exports.startDelivery = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const pedido = await Order.findById(id).populate(
+      "clienteId",
+      "nombre telefono",
+    );
 
     if (!pedido) {
       return res.status(404).json({ message: "Pedido no encontrado" });
     }
 
-    // Esta es la validación que te está fallando
-    if (!pedido.clienteId) {
-      return res.status(400).json({
-        message:
-          "El pedido no tiene un cliente válido en la base de datos. Asegúrate de que el ID del cliente en el pedido coincida con un usuario real.",
-      });
+    if (pedido.repartidorId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Este pedido no te pertenece" });
     }
 
-    const repartidor = await User.findOne({
-      _id: repartidorId,
-      rol: "repartidor",
-    });
-    if (!repartidor) {
-      return res
-        .status(404)
-        .json({ message: "Repartidor no válido o no encontrado" });
-    }
-
-    // Actualizamos el pedido
     pedido.estado = "enCamino";
-    pedido.repartidorId = repartidorId;
     await pedido.save();
 
-    // Notificaciones WhatsApp
+    // Generar link de WhatsApp para el cliente
     const telCliente = pedido.clienteId.telefono.replace(/\D/g, "");
-    const telRepartidor = repartidor.telefono.replace(/\D/g, "");
-
-    const msjCliente = `Hola ${pedido.clienteId.nombre}, tu pedido ${pedido.folio} ya va en camino con ${repartidor.nombre}.`;
-    const msjRepartidor = `¡Hola ${repartidor.nombre}! Tienes el pedido ${pedido.folio}. Dirección: ${pedido.direccion?.calle || "Ver en orden"}.`;
+    const mensaje = `🚴 ¡Hola ${pedido.clienteId.nombre}! Tu pedido ${pedido.folio} de Leños Rellenos ya va en camino. ¡Prepárate para recibirlo!`;
+    const whatsappUrl = `https://wa.me/${telCliente}?text=${encodeURIComponent(mensaje)}`;
 
     res.json({
-      message: `Pedido ${pedido.folio} asignado a ${repartidor.nombre}`,
+      message: "¡En camino!",
       pedido,
-      notificaciones: {
-        whatsappCliente: `https://wa.me/${telCliente}?text=${encodeURIComponent(msjCliente)}`,
-        whatsappRepartidor: `https://wa.me/${telRepartidor}?text=${encodeURIComponent(msjRepartidor)}`,
-      },
+      whatsappUrl,
     });
   } catch (error) {
-    console.error("ERROR CRÍTICO:", error);
-    res.status(500).json({ message: "Error al asignar", error: error.message });
+    console.error("Error al iniciar entrega:", error);
+    res.status(500).json({ message: "Error al iniciar la entrega" });
   }
 };
 
-// 2. OBTENER MIS PEDIDOS (Repartidor)
-exports.getMyOrders = async (req, res) => {
-  try {
-    const misPedidos = await Order.find({
-      repartidorId: req.user.id,
-      estado: "enCamino",
-    }).populate("clienteId", "nombre telefono");
-    res.json(misPedidos);
-  } catch (error) {
-    res.status(500).json({ message: "Error al obtener pedidos" });
-  }
-};
-
-// 3. CONFIRMAR ENTREGA
+// 3. CONFIRMAR ENTREGA - Notifica al cliente y admin
 exports.confirmDelivery = async (req, res) => {
   try {
     const { id } = req.params;
-    const pedido = await Order.findById(id);
-    if (!pedido)
+
+    const pedido = await Order.findById(id).populate(
+      "clienteId",
+      "nombre telefono",
+    );
+
+    if (!pedido) {
       return res.status(404).json({ message: "Pedido no encontrado" });
+    }
+
+    if (pedido.repartidorId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Este pedido no te pertenece" });
+    }
 
     pedido.estado = "entregado";
+    pedido.fechaEntrega = new Date();
     await pedido.save();
 
-    res.json({ message: `¡Pedido ${pedido.folio} entregado!`, pedido });
+    // WhatsApp para el cliente
+    const telCliente = pedido.clienteId.telefono.replace(/\D/g, "");
+    const mensajeCliente = `✅ ¡Hola ${pedido.clienteId.nombre}! Tu pedido ${pedido.folio} ha sido entregado. ¡Gracias por tu preferencia! 🪵🔥`;
+    const whatsappCliente = `https://wa.me/${telCliente}?text=${encodeURIComponent(mensajeCliente)}`;
+
+    res.json({
+      message: `¡Pedido ${pedido.folio} entregado con éxito!`,
+      pedido,
+      whatsappCliente,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Error al confirmar entrega" });
+    console.error("Error al confirmar entrega:", error);
+    res.status(500).json({ message: "Error al confirmar la entrega" });
+  }
+};
+
+// 4. VER DETALLE DE UN PEDIDO
+exports.getOrderDetail = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const pedido = await Order.findById(id).populate(
+      "clienteId",
+      "nombre telefono direcciones",
+    );
+
+    if (!pedido) {
+      return res.status(404).json({ message: "Pedido no encontrado" });
+    }
+
+    if (pedido.repartidorId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Este pedido no te pertenece" });
+    }
+
+    res.json(pedido);
+  } catch (error) {
+    console.error("Error al obtener detalle:", error);
+    res.status(500).json({ message: "Error al obtener el detalle" });
+  }
+};
+
+// 5. HISTORIAL DE ENTREGAS DEL DÍA
+exports.getMyDeliveredToday = async (req, res) => {
+  try {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const manana = new Date(hoy);
+    manana.setDate(manana.getDate() + 1);
+
+    const entregados = await Order.find({
+      repartidorId: req.user.id,
+      estado: "entregado",
+      fechaEntrega: { $gte: hoy, $lt: manana },
+    })
+      .populate("clienteId", "nombre")
+      .sort({ fechaEntrega: -1 });
+
+    res.json(entregados);
+  } catch (error) {
+    console.error("Error al obtener historial:", error);
+    res.status(500).json({ message: "Error al obtener historial" });
   }
 };

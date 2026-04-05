@@ -25,9 +25,24 @@ app.use(
     crossOriginResourcePolicy: false,
   }),
 );
+const allowedOrigins = [
+  "https://front-end-production-a2e6.up.railway.app",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+
 app.use(
   cors({
-    origin: "https://front-end-production-a2e6.up.railway.app",
+    origin: function (origin, callback) {
+      // Permitir requests sin origin (como Postman)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Permitir todos por ahora para debug
+      }
+    },
     credentials: true,
   }),
 );

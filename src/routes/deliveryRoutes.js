@@ -65,7 +65,7 @@ router.put(
   },
 );
 
-// 3. Confirmar entrega - AHORA ENVÍA WhatsApp AL ADMIN
+// 3. Confirmar entrega - ENVÍA WhatsApp AL CLIENTE Y AL ADMIN
 router.put(
   "/entregar/:id",
   verificarToken,
@@ -81,6 +81,7 @@ router.put(
         return res.status(404).json({ message: "Pedido no encontrado" });
       }
 
+      // Guardar estado y fecha de entrega
       pedido.estado = "entregado";
       pedido.fechaEntrega = new Date();
       await pedido.save();
@@ -108,7 +109,7 @@ router.put(
         message: `¡Pedido ${pedido.folio} entregado!`,
         pedido,
         whatsappCliente,
-        whatsappAdmins, // Array con URLs de WhatsApp para cada admin
+        whatsappAdmins,
       });
     } catch (error) {
       console.error("Error al confirmar entrega:", error);
@@ -117,7 +118,7 @@ router.put(
   },
 );
 
-// 4. Historial del día - CORREGIDO para mostrar todos los entregados del repartidor
+// 4. Historial del día - CORREGIDO
 router.get(
   "/historial",
   verificarToken,
@@ -129,14 +130,14 @@ router.get(
       const manana = new Date(hoy);
       manana.setDate(manana.getDate() + 1);
 
-      // Buscar por fechaEntrega O por updatedAt si no existe fechaEntrega
+      // Buscar entregados de hoy (por fechaEntrega o updatedAt)
       const entregados = await Order.find({
         repartidorId: req.user.id,
         estado: "entregado",
         $or: [
           { fechaEntrega: { $gte: hoy, $lt: manana } },
           {
-            fechaEntrega: { $exists: false },
+            fechaEntrega: null,
             updatedAt: { $gte: hoy, $lt: manana },
           },
         ],
@@ -146,6 +147,7 @@ router.get(
 
       res.json(entregados);
     } catch (error) {
+      console.error("Error historial:", error);
       res.status(500).json({ message: "Error al obtener historial" });
     }
   },

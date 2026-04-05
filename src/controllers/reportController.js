@@ -1,67 +1,110 @@
 const Order = require("../models/Order");
+const Product = require("../models/Products");
 
+// REPORTE DIARIO
 exports.getDailyReport = async (req, res) => {
   try {
-    // 1. Definir el inicio y fin del día de hoy
-    const inicioDia = new Date();
-    inicioDia.setHours(0, 0, 0, 0);
+    // Fecha de hoy (inicio y fin del día)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const finDia = new Date();
-    finDia.setHours(23, 59, 59, 999);
+    // 1. Total de ventas del día (solo pedidos confirmados, enCamino o entregados)
+    const ventasHoy = await Order.find({
+      fechaPedido: { $gte: today, $lt: tomorrow },
+      estado: { $in: ["confirmado", "enCamino", "entregado"] },
+    });
 
-    // 2. Agregación: Sumar totales y contar productos
-    const reporte = await Order.aggregate([
-      {
-        $match: {
-          estado: "entregado", // Solo contamos lo que ya se cobró
-          fechaPedido: { $gte: inicioDia, $lte: finDia },
-        },
-      },
-      {
-        $unwind: "$productos", // Desglosamos el array de productos para contarlos uno por uno
-      },
-      {
-        $group: {
-          _id: null,
-          totalIngresos: { $sum: "$total" },
-          totalPedidos: { $sum: 1 },
-          saboresVendidos: {
-            $push: {
-              nombre: "$productos.nombre",
-              cantidad: "$productos.cantidad",
-            },
-          },
-        },
-      },
-    ]);
+    const totalVentas = ventasHoy.reduce((sum, order) => sum + order.total, 0);
 
-    if (reporte.length === 0) {
-      return res.json({
-        message: "Aún no hay ventas entregadas el día de hoy.",
-        totalIngresos: 0,
+    // 2. Pedidos completados (entregados hoy)
+    const pedidosCompletados = await Order.countDocuments({
+      fechaPedido: { $gte: today, $lt: tomorrow },
+      estado: "entregado",
+    });
+
+    // 3. Pedidos pendientes (recibidos o confirmados)
+    const pedidosPendientes = await Order.countDocuments({
+      estado: { $in: ["recibido", "confirmado"] },
+    });
+
+    // 4. Pedidos en camino
+    const pedidosEnCamino = await Order.countDocuments({
+      estado: "enCamino",
+    });
+
+    // 5. Producto estrella del día
+    const productosVendidos = {};
+    ventasHoy.forEach((order) => {
+      order.productos.forEach((prod) => {
+        if (productosVendidos[prod.nombre]) {
+          productosVendidos[prod.nombre] += prod.cantidad;
+        } else {
+          productosVendidos[prod.nombre] = prod.cantidad;
+        }
       });
+    });
+
+    let productoEstrella = { nombre: "Sin ventas", cantidad: 0 };
+    for (const [nombre, cantidad] of Object.entries(productosVendidos)) {
+      if (cantidad > productoEstrella.cantidad) {
+        productoEstrella = { nombre, cantidad };
+      }
     }
 
-    // 3. Formatear el ranking de sabores (AS-52)
-    const ranking = reporte[0].saboresVendidos.reduce((acc, curr) => {
-      acc[curr.nombre] = (acc[curr.nombre] || 0) + curr.cantidad;
-      return acc;
-    }, {});
+    // 6. Total de pedidos del día
+    const totalPedidosHoy = await Order.countDocuments({
+      fechaPedido: { $gte: today, $lt: tomorrow },
+    });
 
     res.json({
-      fecha: new Date().toLocaleDateString(),
-      resumen: {
-        ingresos: reporte[0].totalIngresos,
-        pedidosCompletados: reporte[0].totalPedidos,
+      fecha: today.toISOString().split("T")[0],
+      kpis: {
+        totalVentas,
+        totalPedidosHoy,
+        pedidosCompletados,
+        pedidosPendientes,
+        pedidosEnCamino,
+        productoEstrella,
       },
-      rankingSabores: ranking, // Ejemplo: { "Jamón y Queso": 15, "Chicharrón": 8 }
     });
   } catch (error) {
+    console.error("Error en reporte diario:", error);
     res
       .status(500)
-      .json({
-        message: "Error al generar el reporte diario",
-        error: error.message,
-      });
+      .json({ message: "Error al generar reporte", error: error.message });
+  }
+};
+
+// ALERTAS DE STOCK
+exports.getStockAlerts = async (req, res) => {
+  try {
+    const umbralCritico = 10; // Menos de 10 unidades = crítico
+
+    // Productos con stock crítico
+    const productosCriticos = await Product.find({
+      stock: { $lt: umbralCritico },
+    }).sort({ stock: 1 });
+
+    // Productos agotados
+    const productosAgotados = await Product.find({
+      stock: { $lte: 0 },
+    });
+
+    // Todos los productos con su stock
+    const todosLosProductos = await Product.find().sort({ stock: 1 });
+
+    res.json({
+      umbralCritico,
+      productosCriticos,
+      productosAgotados: productosAgotados.length,
+      inventarioCompleto: todosLosProductos,
+    });
+  } catch (error) {
+    console.error("Error en alertas de stock:", error);
+    res
+      .status(500)
+      .json({ message: "Error al obtener alertas", error: error.message });
   }
 };

@@ -105,6 +105,9 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
+// Alias para register (usa createUser)
+exports.register = exports.createUser;
+
 exports.getPersonal = async (req, res) => {
   try {
     // Buscamos usuarios que sean admin O repartidor

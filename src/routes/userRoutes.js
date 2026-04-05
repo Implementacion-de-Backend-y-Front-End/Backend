@@ -9,7 +9,7 @@ const bcrypt = require("bcryptjs"); // 🔥 Importante: Usar bcryptjs para que c
 // --- RUTAS PÚBLICAS ---
 
 router.post("/login", userController.login);
-router.post("/register", userController.createUser);
+router.post("/register", userController.register);
 
 /**
  * 1. ENVIAR CÓDIGO POR CORREO

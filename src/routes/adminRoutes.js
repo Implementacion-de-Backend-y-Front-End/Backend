@@ -27,6 +27,14 @@ router.put(
   adminController.rejectOrder,
 );
 
+// Asignar repartidor al pedido
+router.put(
+  "/assign/:id",
+  verificarToken,
+  verificarAdmin,
+  adminController.assignDelivery,
+);
+
 router.get(
   "/completed",
   verificarToken,

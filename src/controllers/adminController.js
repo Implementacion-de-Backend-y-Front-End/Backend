@@ -1,10 +1,12 @@
 const Order = require("../models/Order");
 const User = require("../models/Users");
 
-// 1. OBTENER PEDIDOS PENDIENTES (Estado: recibido)
+// 1. OBTENER PEDIDOS PENDIENTES (Estado: recibido o confirmado sin repartidor)
 exports.getPendingOrders = async (req, res) => {
   try {
-    const pedidosPendientes = await Order.find({ estado: "recibido" })
+    const pedidosPendientes = await Order.find({
+      estado: { $in: ["recibido", "confirmado"] },
+    })
       .populate("clienteId", "nombre telefono direcciones")
       .sort({ createdAt: -1 });
     console.log(JSON.stringify(pedidosPendientes, null, 2));

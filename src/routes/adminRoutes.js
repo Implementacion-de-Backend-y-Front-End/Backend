@@ -1,3 +1,4 @@
+// src/routes/adminRoutes.js
 const express = require("express");
 const router = express.Router();
 const adminController = require("../controllers/adminController");
@@ -11,12 +12,20 @@ router.get(
   adminController.getPendingOrders,
 );
 
-// Aceptar pedido
+// Confirmar pedido (envía WhatsApp al cliente)
 router.put(
   "/accept/:id",
   verificarToken,
   verificarAdmin,
   adminController.acceptOrder,
+);
+
+// Asignar repartidor (envía WhatsApp al repartidor)
+router.put(
+  "/assign/:id",
+  verificarToken,
+  verificarAdmin,
+  adminController.assignDelivery,
 );
 
 // Rechazar pedido
@@ -27,6 +36,7 @@ router.put(
   adminController.rejectOrder,
 );
 
+// Pedidos completados
 router.get(
   "/completed",
   verificarToken,

@@ -40,7 +40,7 @@ app.use(
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(null, true); // Permitir todos por ahora para debug
+        callback(new Error("No permitido por CORS"));
       }
     },
     credentials: true,
@@ -62,6 +62,26 @@ app.use("/uploads", express.static("uploads"));
 
 app.get("/", (req, res) => {
   res.json({ message: "API de Leños Rellenos funcionando" });
+});
+
+// 3. Endpoint Seguro (Ejercicio Práctico)
+app.post("/api/comentarios", (req, res) => {
+  const { texto } = req.body;
+
+  if (!texto) {
+    return res.status(400).json({
+      error: "El campo 'texto' es obligatorio para publicar un comentario.",
+    });
+  }
+
+  // Devolvemos el texto en formato JSON como pide el ejercicio
+  res.json({
+    status: "success",
+    data: {
+      comentarioRecibido: texto,
+      fecha: new Date().toISOString(),
+    },
+  });
 });
 
 // 4. Manejo de 404
